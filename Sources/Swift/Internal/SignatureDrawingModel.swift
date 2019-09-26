@@ -68,7 +68,7 @@ class SignatureDrawingModel: SignatureBezierProviderDelegate {
             endContinuousLine()
             
             // Resize signature image
-            signatureImage = SignatureDrawingModel.generateImage(withImageA: signatureImage, imageB: nil, bezierPath: nil, color: signatureColor, size: imageSize)
+            signatureImage = SignatureDrawingModel.generateImage(existingImage: signatureImage, extraImage: nil, bezierPath: nil, color: signatureColor, size: imageSize)
         }
     }
     
@@ -105,7 +105,7 @@ class SignatureDrawingModel: SignatureBezierProviderDelegate {
      Useful for instantiating the model with a previous signature image.
      */
     func addImageToSignature(_ image: UIImage) {
-        signatureImage = SignatureDrawingModel.generateImage(withImageA: signatureImage, imageB: image, bezierPath: nil, color: signatureColor, size: imageSize)
+        signatureImage = SignatureDrawingModel.generateImage(existingImage: signatureImage, extraImage: image, bezierPath: nil, color: signatureColor, size: imageSize)
     }
     
     // MARK: SignatureBezierProviderDelegate
@@ -123,37 +123,48 @@ class SignatureDrawingModel: SignatureBezierProviderDelegate {
     private let bezierProvider = SignatureBezierProvider()
     
     private func signatureImage(adding path: UIBezierPath?) -> UIImage? {
-        return SignatureDrawingModel.generateImage(withImageA: signatureImage, imageB: nil, bezierPath: path, color: signatureColor, size: imageSize)
+        return SignatureDrawingModel.generateImage(existingImage: signatureImage, extraImage: nil, bezierPath: path, color: signatureColor, size: imageSize)
     }
     
     // MARK: Helpers
-    
-    private class func generateImage(withImageA imageA: UIImage?, imageB: UIImage?, bezierPath: UIBezierPath?, color: UIColor, size: CGSize) -> UIImage? {
-        guard size.isPositive && (imageA != nil || imageB != nil || bezierPath != nil) else {
+
+    private class func generateImage(existingImage: UIImage?, extraImage: UIImage?, bezierPath: UIBezierPath?, color: UIColor, size: CGSize) -> UIImage? {
+        guard size.isPositive && (existingImage != nil || extraImage != nil || bezierPath != nil) else {
             return nil
         }
         
-        let imageFrame = CGRect(origin: CGPoint.zero, size: size)
-        UIGraphicsBeginImageContextWithOptions(imageFrame.size, false, 0)
-        imageA?.draw(in: imageFrame)
-        imageB?.draw(in: imageFrame)
-        
-        if let path = bezierPath {
-            color.setStroke()
-            color.setFill()
-            path.stroke()
-            path.fill()
+        let canvasFrame = CGRect(origin: CGPoint.zero, size: size)
+        var presetImageFrame: CGRect {
+            // draw presetImage with aspectFit to the center of canvas
+            let size = extraImage?.aspectFitSize(thatFitsTargetSize: size) ?? .zero
+            let origin = CGPoint(x: canvasFrame.midX - size.width / 2,
+                                            y: canvasFrame.midY - size.height / 2)
+            return CGRect(origin: origin, size: size)
         }
-        
-        let result = UIGraphicsGetImageFromCurrentImageContext()
-        UIGraphicsEndImageContext()
-        
-        return result
+
+        let format = UIGraphicsImageRendererFormat.default()
+        if #available(iOS 12.0, *) {
+            // By default the format will use `.automatic` for `preferredRange` which could have bad performance on some devices. Since there is no color range requirement for signature, `.standard`, which has best performance, meets our requirement.
+            format.preferredRange = .standard
+        } else {
+            format.prefersExtendedRange = false
+        }
+        return UIGraphicsImageRenderer(size: size, format: format).image(actions: { (_) in
+            existingImage?.draw(in: canvasFrame)
+            extraImage?.draw(in: presetImageFrame)
+
+            if let path = bezierPath {
+                color.setStroke()
+                color.setFill()
+                path.stroke()
+                path.fill()
+            }
+        })
     }
 
 }
 
-extension CGSize {
+fileprivate extension CGSize {
     var isPositive: Bool {
         return width > 0 && height > 0
     }

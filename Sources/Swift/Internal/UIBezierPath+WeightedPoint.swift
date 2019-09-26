@@ -62,9 +62,8 @@ extension UIBezierPath {
         path.move(to: lines.0.start)
         path.addLine(to: lines.1.start)
         path.addLine(to: lines.1.end)
-        path.addLine(to: lines.0.start)
+        path.addLine(to: lines.0.end)
         path.close()
-        
         return path
     }
     
